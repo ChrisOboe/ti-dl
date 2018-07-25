@@ -48,6 +48,12 @@ func stripBadChars(in string) string {
 }
 
 func download(url string, file string, key []byte, iv []byte) error {
+	// check if file already exists
+	_, err := os.Stat(file)
+	if !os.IsNotExist(err) {
+		return errors.New("File already exists")
+	}
+
 	// file stuff
 	handler, err := os.Create(file)
 	if err != nil {
