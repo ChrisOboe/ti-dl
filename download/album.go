@@ -59,7 +59,8 @@ func (d Download) Album(albumId int) error {
 		}
 		err = d.trackDownload(item.Item.ID, filePath)
 		if err != nil {
-			return errors.Wrap(err, "Problem with downloading + "+strconv.Itoa(albumId))
+			fmt.Println(err)
+			//return errors.Wrap(err, "Problem with downloading + "+strconv.Itoa(albumId))
 		}
 	}
 
