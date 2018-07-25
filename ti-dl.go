@@ -37,7 +37,7 @@ func main() {
 	albumRegex = regexp.MustCompile(`(https?:\\)?(play\.wimpmusic\.com|listen\.tidal\.com)/album/(?P<albumId>\d+)`)
 	artistRegex = regexp.MustCompile(`(https?:\\)?(play\.wimpmusic\.com|listen\.tidal\.com)/artist/(?P<artistId>\d+)`)
 	playlistRegex = regexp.MustCompile(`(https?:\\)?(play\.wimpmusic\.com|listen\.tidal\.com)/playlist/(?P<playlistId>[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+)`)
-	userRegex = regexp.MustCompile(`(https?:\\)?(play\.wimpmusic\.com|listen\.tidal\.com)/user/(?P<userId>\d+)`)
+	userRegex = regexp.MustCompile(`(https?:\\)?(play\.wimpmusic\.com|listen\.tidal\.com)/profile/(?P<userId>\d+)`)
 
 	a := settings.GetArgs()
 	if a.Defaultconfig {
