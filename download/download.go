@@ -1,43 +1,33 @@
-// Copyright (c) 2018 ChrisOboe
-//
-// This file is part of ti-dl
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <http://www.gnu.org/licenses/>.
+// Copyright (c) 2018-2019 ChrisOboe <chris@oboe.email>
+// SPDX-License-Identifier: GPL-3.0
 
 package download
 
 import (
+	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
 	"fmt"
+	"github.com/ChrisOboe/ti-dl/settings"
 	"github.com/ChrisOboe/tidapi"
 	"github.com/pkg/errors"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 )
 
 type Download struct {
-	quality     tidapi.Audioquality
-	api         tidapi.Tidal
-	destination string
-	state       chan string
+	quality  tidapi.Audioquality
+	api      tidapi.Tidal
+	settings settings.Settings
+	state    chan string
 }
 
-func New(state chan string, quality tidapi.Audioquality, api tidapi.Tidal, destination string) Download {
-	return Download{quality, api, destination, state}
+func New(state chan string, quality tidapi.Audioquality, api tidapi.Tidal, settings settings.Settings) Download {
+	return Download{quality, api, settings, state}
 }
 
 // helpers
@@ -90,20 +80,19 @@ func download(url string, file string, key []byte, iv []byte) error {
 	return nil
 }
 
-func (d Download) trackDownload(trackId int, file string) error {
+func (d Download) trackDownload(trackId int, file string) (string, error) {
 	resp, err := d.api.TracksUrlpostpaywall(trackId, d.quality, tidapi.UrlUsageModeOffline)
 	if err != nil {
-		return errors.Wrap(err, "Couldn't download track "+string(trackId))
+		return "", errors.Wrap(err, "Couldn't download track "+strconv.Itoa(trackId))
 	}
 
 	switch resp.Codec {
 	case "AAC":
-		file += ".mp4"
+		file += ".m4a"
 	case "FLAC":
 		file += ".flac"
 	default:
-		return errors.New(fmt.Sprintf("Codec %s doesn't have a known file extension.", resp.Codec))
-		file += ".???"
+		return "", errors.New(fmt.Sprintf("Codec %s doesn't have a known file extension.", resp.Codec))
 	}
 
 	var key []byte
@@ -113,14 +102,56 @@ func (d Download) trackDownload(trackId int, file string) error {
 	if resp.SecurityToken != "" {
 		key, iv, err = fileKey(resp.SecurityToken)
 		if err != nil {
-			return errors.Wrap(err, "Getting decryption key for track "+string(trackId)+"failed.")
+			return "", errors.Wrap(err, "Getting decryption key for track "+string(trackId)+"failed.")
 		}
 	}
 
 	err = download(resp.Urls[0], file, key, iv)
 	if err != nil {
-		return errors.Wrap(err, "Couldn't download track "+string(trackId))
+		return "", errors.Wrap(err, "Couldn't download track "+string(trackId))
 	}
 
-	return nil
+	/*
+		if d.settings.Remux {
+			ffmpeg := exec.Command("ffmpeg", "-y", "-v", "quiet", "-stats", "-i", file, "-codec", "copy", fileNoExt+".mka")
+
+			fmt.Print("Remuxing to mka: ")
+			stderr, _ := ffmpeg.StderrPipe()
+			err = ffmpeg.Start()
+
+			scanner := bufio.NewScanner(stderr)
+			for scanner.Scan() {
+				fmt.Println(scanner.Text())
+			}
+			ffmpeg.Wait()
+
+			if err != nil {
+				return errors.Wrap(err, "Couldn't execute \""+ffmpeg.String()+"\"")
+			}
+			err = os.Remove(file)
+			if err != nil {
+				return errors.Wrap(err, "Couldn't delete file.")
+			}
+		}
+	*/
+
+	if d.settings.Tag {
+		titag := exec.Command("ti-tag", d.settings.Username, d.settings.Password, "track", strconv.Itoa(trackId), file)
+
+		fmt.Println("Tagging file")
+		stdout, _ := titag.StdoutPipe()
+		err := titag.Start()
+
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
+		}
+		titag.Wait()
+
+		if err != nil {
+			return "", errors.Wrap(err, "Couldn't execute \""+titag.String()+"\"")
+		}
+	}
+
+	return file, nil
 }

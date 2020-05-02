@@ -34,6 +34,7 @@ type Settings struct {
 	Url         string
 	Username    string
 	Password    string
+	Tag         bool
 	Destination string
 }
 
@@ -43,6 +44,7 @@ type args struct {
 	Username      string `arg:"-u" help:"The username of your tidal account."`
 	Password      string `arg:"-p" help:"The password of your tidal account."`
 	Destination   string `arg:"-d" help:"The path were music gets downloaded."`
+	Tag           bool   `arg:"-t" help:"Use ti-tag for tagging the files, creating nfos and calculating replaygain values."`
 	Defaultconfig bool   `help:"Prints an example config file."`
 }
 
@@ -93,6 +95,7 @@ func Get() (Settings, error) {
 	var s Settings
 	s.Configfile = a.Configfile
 	s.Url = a.Url
+	s.Tag = a.Tag
 
 	if a.Username != "" {
 		s.Username = a.Username

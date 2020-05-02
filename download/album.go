@@ -1,26 +1,14 @@
-// Copyright (c) 2018 ChrisOboe
-//
-// This file is part of ti-dl
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <http://www.gnu.org/licenses/>.
+// Copyright (c) 2018-2019 ChrisOboe <chris@oboe.email>
+// SPDX-License-Identifier: GPL-3.0
 
 package download
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/pkg/errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -37,16 +25,20 @@ func (d Download) Album(albumId int) error {
 		return errors.Wrap(err, "Couldn't get album items.")
 	}
 	d.state <- fmt.Sprintf("Downloading album: %s (%d)", album.Title, albumId)
+
+	_albumartist := stripBadChars(album.Artist.Name)
+	_album := stripBadChars(album.Title)
+	_releaseDate := stripBadChars(album.ReleaseDate)
+	_releaseType := stripBadChars(album.Type)
+
+	var downloaded []string
 	for _, item := range items.Items {
 		d.state <- fmt.Sprintf("Downloading track: %s (%d)", item.Item.Title, item.Item.ID)
-		_albumartist := stripBadChars(album.Artist.Name)
-		_album := stripBadChars(album.Title)
+
 		_tracknumber := strconv.Itoa(item.Item.TrackNumber)
 		_title := stripBadChars(item.Item.Title)
-		_releaseDate := stripBadChars(album.ReleaseDate)
-		_releaseType := stripBadChars(album.Type)
 
-		filePath := strings.Replace(d.destination, "${ALBUMARTIST}", _albumartist, -1)
+		filePath := strings.Replace(d.settings.Destination, "${ALBUMARTIST}", _albumartist, -1)
 		filePath = strings.Replace(filePath, "${RELEASETITLE}", _album, -1)
 		filePath = strings.Replace(filePath, "${TRACKNUMBER}", _tracknumber, -1)
 		filePath = strings.Replace(filePath, "${TRACKTITLE}", _title, -1)
@@ -57,10 +49,36 @@ func (d Download) Album(albumId int) error {
 		if err != nil {
 			return errors.Wrap(err, "error creating "+filepath.Dir(filePath))
 		}
-		err = d.trackDownload(item.Item.ID, filePath)
+		file, err := d.trackDownload(item.Item.ID, filePath)
 		if err != nil {
 			fmt.Println(err)
-			//return errors.Wrap(err, "Problem with downloading + "+strconv.Itoa(albumId))
+		}
+		downloaded = append(downloaded, file)
+	}
+
+	albumPath := strings.Replace(d.settings.Destination, "${ALBUMARTIST}", _albumartist, -1)
+	albumPath = strings.Replace(albumPath, "${RELEASETITLE}", _album, -1)
+	albumPath = strings.Replace(albumPath, "${TRACKNUMBER}", "00", -1)
+	albumPath = strings.Replace(albumPath, "${TRACKTITLE}", "XYZ", -1)
+	albumPath = strings.Replace(albumPath, "${RELEASEDATE}", _releaseDate, -1)
+	albumPath = strings.Replace(albumPath, "${RELEASETYPE}", _releaseType, -1)
+
+	if d.settings.Tag {
+		args := []string{d.settings.Username, d.settings.Password, "album", strconv.Itoa(albumId), filepath.Dir(albumPath) + "/album.nfo", filepath.Dir(albumPath) + "/cover.jpg"}
+		args = append(args, downloaded...)
+		titag := exec.Command("ti-tag", args...)
+
+		fmt.Println("Creating album metadata")
+		stdout, _ := titag.StdoutPipe()
+		err = titag.Start()
+
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
+		}
+		titag.Wait()
+		if err != nil {
+			return errors.Wrap(err, "Couldn't execute \""+titag.String()+"\"")
 		}
 	}
 
